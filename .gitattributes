@@ -1,0 +1,9 @@
+*.tmdl text eol=lf
+*.json text eol=lf
+*.pbip text eol=lf
+*.pbism text eol=lf
+*.pbir text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.abf binary
+*.pbix binary
