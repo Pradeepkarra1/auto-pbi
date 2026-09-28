@@ -1,0 +1,69 @@
+# AutoPBI example: Sales Performance dashboard.
+# Build it with:
+#   auto-pbi build --config examples/sales/dashboard.yaml --out ./out
+
+project:
+  name: Sales Performance
+  description: "Executive sales overview — revenue, orders and trends by region and category."
+  theme: midnight
+
+data:
+  source: data/sales.csv
+  table: Sales
+  date_column: order_date
+
+business_rules:
+  - name: Net Revenue
+    definition: Gross sales after discounts. Net Revenue = quantity × unit price × (1 − discount).
+    dax: SUMX(Sales, Sales[quantity] * Sales[unit_price] * (1 - Sales[discount_pct]))
+  - name: High-Value Order
+    definition: An order with net revenue above $1,000.
+
+kpis:
+  - name: Total Revenue
+    description: Total net revenue in the selected period.
+    rule: Net Revenue
+    format: currency
+    target: 2800000
+    trend: yoy
+  - name: Orders
+    description: Number of orders placed.
+    column: order_id
+    aggregation: count
+    format: integer
+    trend: yoy
+  - name: Avg Order Value
+    description: Average net revenue per order.
+    dax: DIVIDE([Total Revenue], [Orders])
+    format: currency
+  - name: Discount Rate
+    description: Average discount given across orders.
+    column: discount_pct
+    aggregation: avg
+    format: percent
+
+pages:
+  - name: Overview
+    visuals:
+      - type: kpi_row
+      - type: line
+        title: Revenue trend
+        category: Date.Month
+        values: [Total Revenue]
+      - type: bar
+        title: Revenue by region
+        category: Sales.region
+        values: [Total Revenue]
+      - type: donut
+        title: Revenue by category
+        category: Sales.category
+        values: [Total Revenue]
+      - type: slicer
+        title: Year
+        field: Date.Year
+      - type: table
+        title: Recent orders
+        columns: [Sales.order_id, Sales.order_date, Sales.customer_name,
+                  Sales.region, Sales.category, Total Revenue]
+
+glossary: true

@@ -1,0 +1,143 @@
+# Supply Chain Fulfillment dashboard — AutoPBI example.
+#
+# Business question: how reliably are customer orders fulfilled, and where
+# are the weak spots (warehouse, carrier, category)?
+#
+#   .venv/bin/python scripts/make_supply_chain_data.py   # regenerate data
+#   auto-pbi build --config examples/supply-chain/dashboard.yaml --out ./out
+
+project:
+  name: Supply Chain Fulfillment
+  description: Order fulfillment performance — OTIF, fill rate, lead time, forecast accuracy.
+  theme: forest
+
+data:
+  source: data/shipments.csv
+  table: Shipments
+  date_column: order_date
+
+business_rules:
+  - name: On-Time Delivery
+    definition: Share of order lines delivered on or before the promised date.
+    dax: >-
+      DIVIDE(
+        COUNTROWS(FILTER('Shipments', 'Shipments'[delivered_date] <= 'Shipments'[promised_date])),
+        COUNTROWS('Shipments')
+      )
+  - name: In-Full Delivery
+    definition: Share of order lines where delivered quantity covers the ordered quantity.
+    dax: >-
+      DIVIDE(
+        COUNTROWS(FILTER('Shipments', 'Shipments'[delivered_qty] >= 'Shipments'[ordered_qty])),
+        COUNTROWS('Shipments')
+      )
+  - name: Fill Rate
+    definition: Shipped units as a share of ordered units (unit-level, not line-level).
+    dax: DIVIDE(SUM('Shipments'[shipped_qty]), SUM('Shipments'[ordered_qty]))
+  - name: Perfect Order
+    definition: An order line counts as perfect only when it is BOTH on-time AND in-full.
+    # documentation-only: the OTIF % KPI below implements it in DAX
+
+kpis:
+  - name: OTIF %
+    description: On-time in-full — the headline fulfillment KPI. Lines delivered on/before promised date with full quantity.
+    dax: >-
+      DIVIDE(
+        COUNTROWS(
+          FILTER(
+            'Shipments',
+            'Shipments'[delivered_date] <= 'Shipments'[promised_date]
+              && 'Shipments'[delivered_qty] >= 'Shipments'[ordered_qty]
+          )
+        ),
+        COUNTROWS('Shipments')
+      )
+    format: percent
+    target: 0.95
+    trend: yoy
+  - name: On-Time %
+    description: Share of lines delivered on or before the promised date.
+    rule: On-Time Delivery
+    format: percent
+    target: 0.97
+    trend: mom
+  - name: In-Full %
+    description: Share of lines delivered in full quantity.
+    rule: In-Full Delivery
+    format: percent
+    target: 0.98
+  - name: Fill Rate %
+    description: Shipped units / ordered units.
+    rule: Fill Rate
+    format: percent
+    target: 0.99
+  - name: Avg Lead Time (Days)
+    description: Average days from shipment to delivery.
+    column: lead_time_days
+    aggregation: avg
+    format: decimal
+    trend: qoq
+  - name: Backorder Lines
+    description: Order lines shipped short (shipped qty below ordered qty).
+    dax: "COUNTROWS(FILTER('Shipments', 'Shipments'[shipped_qty] < 'Shipments'[ordered_qty]))"
+    format: integer
+    trend: mom
+  - name: Forecast Accuracy
+    description: 1 - WAPE — how close the demand forecast was to actual ordered quantity.
+    dax: >-
+      1 - DIVIDE(
+        SUMX('Shipments', ABS('Shipments'[forecast_qty] - 'Shipments'[ordered_qty])),
+        SUM('Shipments'[ordered_qty])
+      )
+    format: percent
+    target: 0.92
+  - name: Shipped Value
+    description: Total value of delivered units.
+    column: line_value
+    format: currency
+    trend: yoy
+    show_card: false
+
+pages:
+  - name: Overview
+    visuals:
+      - type: kpi_row
+      - type: line
+        title: OTIF % trend
+        category: Date.Month
+        values: [OTIF %]
+      - type: bar
+        title: OTIF % by warehouse
+        category: Shipments.warehouse
+        values: [OTIF %]
+      - type: donut
+        title: Shipped value by carrier
+        category: Shipments.carrier
+        values: [Shipped Value]
+      - type: table
+        title: Recent shipments
+        columns: [Shipments.order_id, Shipments.order_date, Shipments.warehouse,
+                  Shipments.carrier, OTIF %, Shipped Value]
+  - name: Fulfillment Detail
+    visuals:
+      - type: matrix
+        title: OTIF % by warehouse and category
+        rows: [Shipments.warehouse]
+        category: Shipments.product_category
+        values: [OTIF %]
+      - type: bar
+        title: Avg lead time by carrier
+        category: Shipments.carrier
+        values: [Avg Lead Time (Days)]
+      - type: column
+        title: Backorder lines by warehouse
+        category: Shipments.warehouse
+        values: [Backorder Lines]
+      - type: gauge
+        title: OTIF vs target
+        value: OTIF %
+      - type: slicer
+        title: Warehouse
+        field: Shipments.warehouse
+
+glossary: true
